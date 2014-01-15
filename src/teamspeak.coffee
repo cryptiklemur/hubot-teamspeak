@@ -17,7 +17,7 @@ class TeamspeakBot extends Adapter
 
     @robot.name = options.nick
     bot = new Teamspeak options.server
-    var response = bot.send("login", {client_login_name: options.nick})
+    response = bot.send("login", {client_login_name: options.nick})
     console.log(response);
     
     @bot = bot
