@@ -1,6 +1,6 @@
 {
   "name": "hubot-teamspeak",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "author": "Aaron Scherer <aequasi@gmail.com>",
   "description": "Teamspeak 3 adapter for Hubot",
   "keywords": "hubot teamspeak adapter",
