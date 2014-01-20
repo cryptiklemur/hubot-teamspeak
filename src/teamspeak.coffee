@@ -8,8 +8,6 @@ class TeamspeakBot extends Adapter
   run: ->
     self = @
 
-    do @checkCanStart
-
     options =
       nick:     process.env.HUBOT_TEAMSPEAK_NICK or @robot.name
       server:   process.env.HUBOT_TEAMSPEAK_SERVER
