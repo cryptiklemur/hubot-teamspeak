@@ -1,29 +1,50 @@
 # Hubot dependencies
-{Robot, Adapter, TextMessage, EnterMessage, LeaveMessage, Response} = require 'hubot'
+Robot   = require '../../hubot/src/robot'
+Adapter = require '../../hubot/src/adapter'
+{TextMessage, EnterMessage, LeaveMessage} = require '../../hubot/src/message'
 
 # teamspeak library
-Teamspeak  = require 'node-teamspeak'
-util	   = require 'util'
-fs		 = require 'fs'
+Teamspeak = require 'node-teamspeak'
+util	  = require 'util'
+fs	  = require 'fs'
 
 class TeamspeakBot extends Adapter
-	poke: (name, message = "") ->
+	send: (envelope, strings...) ->
+		console.log "Sending"
+		for str in strings
+			@message envelope.user, str
+
+	reply: (envelope, strings...) ->
+		console.log "Replying"
+		for str in strings
+			@message envelope.user, str
+
+	message: (client, message) ->
 		self = @
-		self.bot.send "clientfind", {pattern: name}, (err, response) ->
-			self.bot.send "clientpoke", {clid: response.clid, msg: message}
-	
-	megaPoke: (name, count = 100, message="") ->
-		self = @
-		time = 250
-		for i in [0..count] by 1
-			setTimeout ->
-				self.poke name, message
-			, time
-			time = time + 250
-		
-	message: (client, message = "") ->
-		self = @
+		console.log "Firing sendtextmessage"
 		self.bot.send "sendtextmessage", {targetmode: 1, target: client.clid, msg: message}
+		console.log "Done firing sendtextmessage"
+
+	getUserFromName: (name) ->
+		return @robot.brain.userForName(name) if @robot.brain?.userForName?
+
+		return @userForName name
+
+	getUserFromId: (id) ->
+		return @robot.brain.userForId(id) if @robot.brain?.userForId?
+
+		return @userForId id
+
+	createUser: (client) ->
+		user = @getUserFromName client.client_nickname
+		unless user?
+			id = client.client_database_id
+			user = @getUserFromId id
+			user.name = client.client_nickname
+			for key, value of client
+				user[key] = client[key]
+	
+		user
 
 	checkCanStart: ->
 		if not process.env.HUBOT_TEAMSPEAK_CONFIG
@@ -51,24 +72,13 @@ class TeamspeakBot extends Adapter
 			self.bot.send "use", {sid: 1}, ->
 				self.bot.send "clientupdate", {client_nickname: self.config.nick}
 				do self.doBinds
-				do self.messageClients
-		  
-	messageClients: ->
-		self = @
-		self.bot.send "clientlist", (err, resp) ->
-			for client in resp
-				continue if self.config.debug.enabled and client.client_database_id != self.config.debug.user
-				self.message client, "Hey there #{client.client_nickname}. Your friendly neighborhood bot is back!"
-				self.addUserToBrain client
-	
+				self.emit "connected"
 	doBinds: ->
 		self = @
-		#self.bot.send "servernotifyregister", {event: "server"} # Apparently unnecessary
 		self.bot.send "servernotifyregister", {event: "textprivate"}
 		self.bot.send "servernotifyregister", {event: "textserver"}
 		self.bot.send "servernotifyregister", {event: "channel", id: 0}
 
-		console.log "Fetching Channels"
 		self.bot.send "channellist", {}, (err, response) ->
 			for channel in response
 				self.bot.send "servernotifyregister", {event: "channel", id: channel.cid}
@@ -80,47 +90,28 @@ class TeamspeakBot extends Adapter
 		self.bot.on 'error', (err) ->
 			console.log err 
 
-		console.log "Binding!"
+		console.log "Binding TextMessage"
+		self.bot.on "textmessage", (event) ->
+			user = self.getUserFromName event.invokername
+			unless user?
+				self.bot.send "clientinfo", {clid: event.invokerid}, (err, client) ->
+					client.clid = event.invokerid
+					console.log client
+					user = self.createUser client
+					self.buildTextMessage user, event.msg
+					return
 
-		self.binds.connect self
-		self.binds.join self
-		self.binds.chat self
+			self.buildTextMessage user, event.msg
 	
-	binds: 
-		connect: (self) ->
-			self.bot.on 'cliententerview', (event) ->
-				console.log 'Client Connected'
+	buildTextMessage: (user, message) ->
+		@receive new TextMessage user, message
 
-				return if self.config.debug.enabled and event.client_database_id != self.config.debug.user
-				self.message event, self.config.welcome.message.format event.client_nickname 
-				
-				self.addUserToBrain event
-			
-		join: (self) ->
-			self.bot.on "clientmoved", (event) ->
-				console.log 'Client Moved Channels'
-				console.log event
-
-		chat: (self) ->
-			self.bot.on 'textmessage', (event) ->
-				console.log 'Client sent the bot a message'
-				console.log event
-				console.log self.userForName event.invokername
-
-	addUserToBrain: (client) ->
-		self = @
-		console.log "Adding user to brain"
-		console.log self.robot.brain
-		self.bot.send "clientinfo", {clid: client.clid}, (err, response) ->
-			response['name'] = response.client_nickname
-			self.robot.brain.userForId(response.client_database_id, response)
-		
+	receive: (message) ->
+		@robot.receive message
+	
+	error: (e) ->
+		console.log "There was an error."
+		console.log e
 
 exports.use = (robot) ->
   new TeamspeakBot robot
-
-  
-String.prototype.format = ->
-	args = arguments
-	return this.replace /{(\d+)}/g, (match, number) ->
-		return if typeof args[number] isnt 'undefined' then args[number] else match
