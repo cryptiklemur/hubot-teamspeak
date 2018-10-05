@@ -1,3 +1,7 @@
+# Archived
+
+This project is not receiving any more development.
+
 # Hubot IRC Adapter
 
 ## Travis-CI Build Status
